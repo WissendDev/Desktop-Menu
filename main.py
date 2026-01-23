@@ -1,10 +1,11 @@
 import sys
 import os
 import json
+import tempfile
 from PyQt6.QtCore import Qt, QFileInfo
 from PyQt6.QtWidgets import (QApplication, QWidget, QPushButton, QVBoxLayout, 
                              QHBoxLayout, QLabel, QScrollArea, QFileIconProvider, 
-                             QFileDialog)
+                             QFileDialog, QInputDialog)
 from win32mica import ApplyMica, MicaTheme, MicaStyle
 
 CONFIG_FILE = "config.json"
@@ -20,6 +21,7 @@ class DesktopMenu(QWidget):
         
         ApplyMica(HWND=self.winId(), Theme=MicaTheme.LIGHT, Style=MicaStyle.ALT)
 
+        self.create_temp_readme()
         self.apps_list = self.load_config() 
         self.init_ui()
 
@@ -63,6 +65,37 @@ class DesktopMenu(QWidget):
         self.main_layout.addWidget(self.scroll)
 
         self.refresh_grid()
+
+    def create_temp_readme(self):
+        temp_path = os.path.join(tempfile.gettempdir(), "DesktopMenu_Readme.txt")
+        content = (
+            "Welcome to Desktop Menus\n\n"
+            "Overview:\n"
+            "High-performance launcher designed for streamers. Utilizes the native Windows Mica effect.\n\n"
+            "Hotkeys and Controls:\n"
+            "Ctrl + M: Delete all files from the list (clear configuration).\n"
+            "Ctrl + B: Rename the file. Hover your cursor over the application icon and press the keys.\n"
+            "Right-Click: Instantly remove a specific application from the menu.\n"
+            "Left-Click: Run the selected application.\n\n"
+            "Advanced Usage:\n"
+            "To keep this menu always on top of other windows, it is recommended to use Microsoft PowerToys.\n"
+            "Press Win + Ctrl + T while the Desktop Menu window is active to pin it.\n\n"
+            "Features:\n"
+            "Mica Translucency: Native Windows 11 blur effect integration.\n"
+            "Instant Management: Fast removal and renaming of entries.\n"
+            "Custom UI: Smooth horizontal scrollbar for easy navigation.\n"
+            "Smart Assets: Automatic extraction of high-quality icons from executable files.\n\n"
+            "Support the Project:\n"
+            "The developer did a great job on this tool. If you find it useful, please visit the GitHub\n"
+            "repository and leave a star to support the development.\n\n"
+            "Creator: WissendDev - github.com/wissenddev/"
+        )
+        try:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.startfile(temp_path)
+        except:
+            pass
 
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -109,6 +142,7 @@ class DesktopMenu(QWidget):
 
     def create_app_button(self, name, path, index, provider):
         btn = QPushButton()
+        btn.setObjectName(f"app_btn_{index}")
         btn.setFixedSize(75, 75)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         
@@ -131,7 +165,7 @@ class DesktopMenu(QWidget):
         if os.path.exists(path):
             icon_label.setPixmap(provider.icon(QFileInfo(path)).pixmap(28, 28))
         else:
-            icon_label.setText("❓")
+            icon_label.setText("?")
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         display_name = (name[:8] + '..') if len(name) > 9 else name
@@ -144,6 +178,30 @@ class DesktopMenu(QWidget):
         
         btn.clicked.connect(lambda: os.startfile(path))
         return btn
+
+    def keyPressEvent(self, event):
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_M:
+            self.apps_list = []
+            self.save_to_json(self.apps_list)
+            self.refresh_grid()
+        
+        elif event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_B:
+            widget = QApplication.widgetAt(self.cursor().pos())
+            while widget:
+                if isinstance(widget, QPushButton) and widget.objectName().startswith("app_btn_"):
+                    index = int(widget.objectName().split("_")[-1])
+                    self.rename_app(index)
+                    break
+                widget = widget.parentWidget()
+
+    def rename_app(self, index):
+        if 0 <= index < len(self.apps_list):
+            old_name = self.apps_list[index][0]
+            new_name, ok = QInputDialog.getText(self, "Rename", "Name:", text=old_name)
+            if ok and new_name:
+                self.apps_list[index][0] = new_name
+                self.save_to_json(self.apps_list)
+                self.refresh_grid()
 
     def delete_app(self, index):
         if 0 <= index < len(self.apps_list):
